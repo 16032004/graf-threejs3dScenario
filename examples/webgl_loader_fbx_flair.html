@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Escenario 3D • Modelo FBX Praying</title>
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <link type="text/css" rel="stylesheet" href="main.css" />
+  </head>
+
+  <body>
+    <div id="info">
+      <h1>Escenario 3D • Modelo FBX Praying</h1>
+      <p>
+        Basado en ejemplos de
+        <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a>
+        y animaciones de
+        <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Mixamo</a>
+      </p>
+      <p class="hint">Tip: haz clic en la escena para activar la música 🎧</p>
+    </div>
+
+    <!-- Importmap: recuerda que este archivo está dentro de /examples -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "../build/three.module.js",
+          "three/addons/": "../jsm/"
+        }
+      }
+    </script>
+
+    <!-- AQUÍ va todo el código JS como módulo -->
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+      import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+
+      // ---- Variables globales ----
+      let camera, scene, renderer, controls;
+      let mixer = null;
+      const clock = new THREE.Clock();
+
+      let listener, sound;
+
+      init();
+      animate();
+
+      function init() {
+        // Contenedor
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        // Cámara
+        camera = new THREE.PerspectiveCamera(
+          45,
+          window.innerWidth / window.innerHeight,
+          1,
+          2000
+        );
+        camera.position.set(0, 180, 320);
+
+        // Escena
+        scene = new THREE.Scene();
+
+        // Niebla suave (efecto extra)
+        scene.fog = new THREE.FogExp2(0x111133, 0.003);
+
+        // Renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // ----- HDRI de fondo -----
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+
+        new RGBELoader()
+          .setPath('../textures/')
+          .load('citrus_orchard_puresky_4k.hdr', (texture) => {
+            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+            scene.background = envMap;
+            scene.environment = envMap;
+            texture.dispose();
+            pmremGenerator.dispose();
+          });
+
+        // Luces
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444466, 1.2);
+        hemiLight.position.set(0, 200, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(80, 180, 80);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.near = 1;
+        dirLight.shadow.camera.far = 400;
+        dirLight.shadow.mapSize.set(2048, 2048);
+        scene.add(dirLight);
+
+        // ----- Piso con textura elegante -----
+        const texLoader = new THREE.TextureLoader();
+        const floorTex = texLoader.load('../textures/plank_flooring_04_diff_4k.jpg');
+        floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+        floorTex.repeat.set(8, 8);
+
+        const floorMat = new THREE.MeshStandardMaterial({
+          map: floorTex,
+          roughness: 0.45,
+          metalness: 0.15
+        });
+
+        const floorGeo = new THREE.PlaneGeometry(2000, 2000);
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Controles de órbita
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 90, 0);
+        controls.update();
+
+        // ----- Audio -----
+        listener = new THREE.AudioListener();
+        camera.add(listener);
+
+        sound = new THREE.Audio(listener);
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load(
+          'models/modelsaudio/Desire.mp3',
+          (buffer) => {
+            sound.setBuffer(buffer);
+            sound.setLoop(true);
+            sound.setVolume(0.35);
+          },
+          undefined,
+          (err) => {
+            console.error('Error cargando audio:', err);
+          }
+        );
+
+        // Reproducir al primer clic
+        window.addEventListener('click', () => {
+          if (sound && !sound.isPlaying) sound.play();
+        });
+
+        // ----- Modelo FBX humano: Praying -----
+        const loader = new FBXLoader();
+        loader.load(
+          'models/fbx/Praying.fbx', // según tu carpeta: examples/models/fbx/Praying.fbx
+          (object) => {
+            object.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                // Material elegante con brillo metálico
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0xff5522,
+                  roughness: 0.25,
+                  metalness: 0.7
+                });
+              }
+            });
+
+            // Escala y posición del modelo
+            object.scale.setScalar(0.9);
+            object.position.set(0, 0, 0);
+
+            // Animación tipo “bailando” (usa la primera animación del FBX)
+            if (object.animations && object.animations.length > 0) {
+              mixer = new THREE.AnimationMixer(object);
+              const action = mixer.clipAction(object.animations[0]);
+              action.play();
+            }
+
+            scene.add(object);
+          },
+          undefined,
+          (error) => {
+            console.error('Error cargando models/fbx/Praying.fbx:', error);
+          }
+        );
+
+        // Resize
+        window.addEventListener('resize', onWindowResize);
+      }
+
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const delta = clock.getDelta();
+        if (mixer) mixer.update(delta);
+
+        renderer.render(scene, camera);
+      }
+    </script>
+  </body>
+</html>
